@@ -1,6 +1,3 @@
-# coding: utf-8
-
-from __future__ import unicode_literals
 from unittest import skipIf
 
 from django.conf import settings
@@ -14,6 +11,7 @@ from .models import Test
         'We can’t change the DB used since there’s only one configured')
 class MultiDatabaseTestCase(TransactionTestCase):
     multi_db = True
+    databases = "__all__"
 
     def setUp(self):
         self.t1 = Test.objects.create(name='test1')
@@ -49,8 +47,7 @@ class MultiDatabaseTestCase(TransactionTestCase):
             data1 = list(Test.objects.using(self.db_alias2))
             self.assertListEqual(data1, [])
 
-        with self.assertNumQueries(2 if self.is_sqlite2 else 1,
-                                   using=self.db_alias2):
+        with self.assertNumQueries(1, using=self.db_alias2):
             t3 = Test.objects.using(self.db_alias2).create(name='test3')
 
         with self.assertNumQueries(1, using=self.db_alias2):
@@ -65,8 +62,7 @@ class MultiDatabaseTestCase(TransactionTestCase):
             data1 = list(Test.objects.all())
             self.assertListEqual(data1, [self.t1, self.t2])
 
-        with self.assertNumQueries(2 if self.is_sqlite2 else 1,
-                                   using=self.db_alias2):
+        with self.assertNumQueries(1, using=self.db_alias2):
             Test.objects.using(self.db_alias2).create(name='test3')
 
         with self.assertNumQueries(0):

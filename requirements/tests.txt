@@ -1,10 +1,15 @@
--r requirements.txt
+# Requirements file for tests on Travis
 
-psycopg2-binary
+django>=2
+
+psycopg2
+psycopg
 mysqlclient
 django-redis
 python-memcached
+pymemcache
 pylibmc
+
 pytz
 Jinja2
 

@@ -1,14 +1,34 @@
-# coding: utf-8
-
-from __future__ import unicode_literals
-
+from django import VERSION as DJANGO_VERSION
 from django.conf import settings
 from django.contrib.postgres.fields import (
-    ArrayField, HStoreField, IntegerRangeField, JSONField, FloatRangeField,
-    DateRangeField, DateTimeRangeField)
+    ArrayField, HStoreField, IntegerRangeField,
+    DateRangeField, DateTimeRangeField, DecimalRangeField)
 from django.contrib.postgres.operations import (
     HStoreExtension, UnaccentExtension)
 from django.db import models, migrations
+
+
+def extra_regular_available_fields():
+    fields = []
+    try:
+        from django.db.models import JSONField
+        fields.append(('json', JSONField(null=True, blank=True)))
+    except ImportError:
+        pass
+
+    return fields
+
+
+def extra_postgres_available_fields():
+    fields = []
+
+    # Future proofing with Django 40 deprecation
+    if DJANGO_VERSION[0] < 4:
+        # TODO Remove when Dj40 support is dropped
+        from django.contrib.postgres.fields import JSONField
+        fields.append(('json', JSONField(null=True, blank=True)))
+
+    return fields
 
 
 class Migration(migrations.Migration):
@@ -31,11 +51,13 @@ class Migration(migrations.Migration):
                 ('permission', models.ForeignKey(blank=True, to='auth.Permission', null=True, on_delete=models.PROTECT)),
                 ('a_float', models.FloatField(null=True, blank=True)),
                 ('a_decimal', models.DecimalField(null=True, blank=True, max_digits=5, decimal_places=2)),
+                ('a_choice', models.CharField(choices=[("foo","foo"), ("bar","bar")], null=True, max_length=3)),
+                ('a_dict_choice', models.CharField(choices=[("foo","foo"), ("bar","bar")], null=True, max_length=3)),
                 ('bin', models.BinaryField(null=True, blank=True)),
                 ('ip', models.GenericIPAddressField(null=True, blank=True)),
                 ('duration', models.DurationField(null=True, blank=True)),
                 ('uuid', models.UUIDField(null=True, blank=True)),
-            ],
+            ] + extra_regular_available_fields(),
             options={
                 'ordering': ('name',),
             },
@@ -67,12 +89,11 @@ class Migration(migrations.Migration):
                     models.IntegerField(null=True, blank=True), size=3,
                     null=True, blank=True)),
                 ('hstore', HStoreField(null=True, blank=True)),
-                ('json', JSONField(null=True, blank=True)),
                 ('int_range', IntegerRangeField(null=True, blank=True)),
-                ('float_range', FloatRangeField(null=True, blank=True)),
                 ('date_range', DateRangeField(null=True, blank=True)),
                 ('datetime_range', DateTimeRangeField(null=True, blank=True)),
-            ],
+                ('decimal_range', DecimalRangeField(null=True, blank=True))
+            ] + extra_postgres_available_fields(),
         ),
         migrations.RunSQL('CREATE TABLE cachalot_unmanagedmodel '
                           '(id SERIAL PRIMARY KEY, name VARCHAR(50));'),

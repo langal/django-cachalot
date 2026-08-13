@@ -1,19 +1,18 @@
-# coding: utf-8
-
-from __future__ import unicode_literals
-from collections import Iterable
+import re
+import types
+from collections.abc import Iterable
+from functools import wraps
 from time import time
 
+from django.core.exceptions import EmptyResultSet
 from django.db.backends.utils import CursorWrapper
-from django.db.models.query import EmptyResultSet
 from django.db.models.signals import post_migrate
 from django.db.models.sql.compiler import (
     SQLCompiler, SQLInsertCompiler, SQLUpdateCompiler, SQLDeleteCompiler,
 )
 from django.db.transaction import Atomic, get_connection
-from django.utils.six import binary_type, wraps
 
-from .api import invalidate
+from .api import invalidate, LOCAL_STORAGE
 from .cache import cachalot_caches
 from .settings import cachalot_settings, ITERABLES
 from .utils import (
@@ -24,6 +23,13 @@ from .utils import (
 
 WRITE_COMPILERS = (SQLInsertCompiler, SQLUpdateCompiler, SQLDeleteCompiler)
 
+SQL_DATA_CHANGE_RE = re.compile(
+    '|'.join([
+        fr'(\W|\A){re.escape(keyword)}(\W|\Z)'
+        for keyword in ['update', 'insert', 'delete', 'alter', 'create', 'drop']
+    ]),
+    flags=re.IGNORECASE,
+)
 
 def _unset_raw_connection(original):
     def inner(compiler, *args, **kwargs):
@@ -37,22 +43,30 @@ def _unset_raw_connection(original):
 
 def _get_result_or_execute_query(execute_query_func, cache,
                                  cache_key, table_cache_keys):
-    data = cache.get_many(table_cache_keys + [cache_key])
+    try:
+        data = cache.get_many(table_cache_keys + [cache_key])
+    except (KeyError, ModuleNotFoundError):
+        data = None
 
     new_table_cache_keys = set(table_cache_keys)
-    new_table_cache_keys.difference_update(data)
+    if data:
+        new_table_cache_keys.difference_update(data)
 
-    if not new_table_cache_keys:
-        try:
-            timestamp, result = data.pop(cache_key)
-            if timestamp >= max(data.values()):
-                return result
-        except (KeyError, TypeError, ValueError):
-            # In case `cache_key` is not in `data` or contains bad data,
-            # we simply run the query and cache again the results.
-            pass
+        if not new_table_cache_keys:
+            try:
+                timestamp, result = data.pop(cache_key)
+                if timestamp >= max(data.values()):
+                    return result
+            except (KeyError, TypeError, ValueError):
+                # In case `cache_key` is not in `data` or contains bad data,
+                # we simply run the query and cache again the results.
+                pass
 
     result = execute_query_func()
+
+    if result.__class__ == types.GeneratorType and not cachalot_settings.CACHALOT_CACHE_ITERATORS:
+        return result
+
     if result.__class__ not in ITERABLES and isinstance(result, Iterable):
         result = list(result)
 
@@ -69,6 +83,10 @@ def _patch_compiler(original):
     @_unset_raw_connection
     def inner(compiler, *args, **kwargs):
         execute_query_func = lambda: original(compiler, *args, **kwargs)
+        # Checks if utils/cachalot_disabled
+        if not getattr(LOCAL_STORAGE, "cachalot_enabled", True):
+            return execute_query_func()
+
         db_alias = compiler.using
         if db_alias not in cachalot_settings.CACHALOT_DATABASES \
                 or isinstance(compiler, WRITE_COMPILERS):
@@ -125,12 +143,10 @@ def _patch_cursor():
             finally:
                 connection = cursor.db
                 if getattr(connection, 'raw', True):
-                    if isinstance(sql, binary_type):
+                    if isinstance(sql, bytes):
                         sql = sql.decode('utf-8')
                     sql = sql.lower()
-                    if 'update' in sql or 'insert' in sql or 'delete' in sql \
-                            or 'alter' in sql or 'create' in sql \
-                            or 'drop' in sql:
+                    if SQL_DATA_CHANGE_RE.search(sql):
                         tables = filter_cachable(
                             _get_tables_from_sql(connection, sql))
                         if tables:
@@ -142,8 +158,7 @@ def _patch_cursor():
 
     if cachalot_settings.CACHALOT_INVALIDATE_RAW:
         CursorWrapper.execute = _patch_cursor_execute(CursorWrapper.execute)
-        CursorWrapper.executemany = \
-            _patch_cursor_execute(CursorWrapper.executemany)
+        CursorWrapper.executemany = _patch_cursor_execute(CursorWrapper.executemany)
 
 
 def _unpatch_cursor():

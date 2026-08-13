@@ -1,6 +1,7 @@
 import debug_toolbar
-from django.conf.urls import url, include
+from django.urls import path, re_path, include
 from django.http import HttpResponse
+from django.contrib import admin
 
 
 def empty_page(request):
@@ -8,6 +9,7 @@ def empty_page(request):
 
 
 urlpatterns = [
-    url(r'^$', empty_page),
-    url(r'^__debug__/', include(debug_toolbar.urls)),
+    re_path(r'^$', empty_page),
+    re_path(r'^__debug__/', include(debug_toolbar.urls)),
+    path('admin/', admin.site.urls),
 ]

@@ -4,15 +4,17 @@ Quick start
 Requirements
 ............
 
-- Django 1.11, 2.0 or 2.1
-- Python 2.7, 3.4, 3.5, 3.6 or 3.7
+- Django 4.2, 5.2, 6.0, 6.1
+- Python 3.8-3.14
 - a cache configured as ``'default'`` with one of these backends:
 
   - `django-redis <https://github.com/niwinz/django-redis>`_
-  - `memcached <https://docs.djangoproject.com/en/2.0/topics/cache/#memcached>`_
+  - `redis <https://docs.djangoproject.com/en/dev/topics/cache/#redis>`_
+    (requires Django >= 4)
+  - `memcached <https://docs.djangoproject.com/en/dev/topics/cache/#memcached>`_
     (using either python-memcached or pylibmc)
-  - `filebased <https://docs.djangoproject.com/en/2.0/topics/cache/#filesystem-caching>`_
-  - `locmem <https://docs.djangoproject.com/en/2.0/topics/cache/#local-memory-caching>`_
+  - `filebased <https://docs.djangoproject.com/en/dev/topics/cache/#filesystem-caching>`_
+  - `locmem <https://docs.djangoproject.com/en/dev/topics/cache/#local-memory-caching>`_
     (but it’s not shared between processes, see :ref:`locmem limits <Locmem>`)
 
 - one of these databases:
@@ -28,7 +30,7 @@ Usage
 #. ``pip install django-cachalot``
 #. Add ``'cachalot',`` to your ``INSTALLED_APPS``
 #. If you use multiple servers with a common cache server,
-   :ref:`double check their clock synchronisation <multiple servers>`
+   :ref:`double check their clock synchronisation <Multiple servers>`
 #. If you modify data outside Django
    – typically after restoring a SQL database –,
    use the :ref:`manage.py command <Command>`
@@ -61,13 +63,13 @@ Settings
 
   .. warning::
      After modifying this setting, you should invalidate the cache
-     :ref:`using the manage.py command <Command>` or :ref:`the API <API>`.
+     :ref:`using the manage.py command <Command>` or :ref:`the API <Api>`.
      Indeed, only the cache configured using this setting is automatically
      invalidated by django-cachalot – for optimisation reasons. So when you
      change this setting, you end up on a cache that may contain stale data.
 
 .. |CACHES| replace:: ``CACHES``
-.. _CACHES: https://docs.djangoproject.com/en/2.0/ref/settings/#std:setting-CACHES
+.. _CACHES: https://docs.djangoproject.com/en/dev/ref/settings/#caches
 
 ``CACHALOT_DATABASES``
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -80,7 +82,23 @@ Settings
   engines.
 
 .. |DATABASES| replace:: ``DATABASES``
-.. _DATABASES: https://docs.djangoproject.com/en/2.0/ref/settings/#std:setting-DATABASES
+.. _DATABASES: https://docs.djangoproject.com/en/dev/ref/settings/#databases
+
+``CACHALOT_USE_UNSUPPORTED_DATABASE``
+~~~~~~~~~~~~~~~~~~~~~~
+
+:Default: ``False``
+:Description:
+  Whether to allow usage of unsupported databases. 
+  No startup errors will be thrown if this set to `True`.
+
+``CACHALOT_ADDITIONAL_SUPPORTED_DATABASES``
+~~~~~~~~~~~~~~~~~~~~~~
+
+:Default: ``frozenset()``
+:Description:
+  Allows us to define custom supported databases without setting 
+  ``CACHALOT_USE_UNSUPPORTED_DATABASE`` to ``True``.
 
 ``CACHALOT_TIMEOUT``
 ~~~~~~~~~~~~~~~~~~~~
@@ -106,6 +124,20 @@ Settings
 :Description: If set to ``True``, caches random queries
               (those with ``order_by('?')``).
 
+``CACHALOT_CACHE_ITERATORS``
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Default: ``True``
+:Description:
+   If set to ``True``, cache results from QuerySets that return
+   generators. This is useful for caching the result sets of QuerySets that
+   use ``.iterator()``.
+
+   .. warnings::
+      ``.iterator()`` is often used for large result sets. Caching these can use large
+      amounts of local memory because django-cachalot has to first convert them to a list to
+      store them in the cache. Setting to ``False`` can potentially resolve out of memory issues.
+
 .. _CACHALOT_INVALIDATE_RAW:
 
 ``CACHALOT_INVALIDATE_RAW``
@@ -117,6 +149,8 @@ Settings
   SQL queries – read :ref:`raw queries limits <Raw SQL queries>` for more info.
 
 
+.. _CACHALOT_ONLY_CACHABLE_TABLES:
+
 ``CACHALOT_ONLY_CACHABLE_TABLES``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -124,11 +158,22 @@ Settings
 :Description:
   Sequence of SQL table names that will be the only ones django-cachalot
   will cache. Only queries with a subset of these tables will be cached.
-  The sequence being empty (as it is by default) doesn’t mean that no table
+  The sequence being empty (as it is by default) does not mean that no table
   can be cached: it disables this setting, so any table can be cached.
   :ref:`CACHALOT_UNCACHABLE_TABLES` has more weight than this:
   if you add a table to both settings, it will never be cached.
   Run ``./manage.py invalidate_cachalot`` after changing this setting.
+
+``CACHALOT_ONLY_CACHABLE_APPS``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Default: ``frozenset()``
+:Description:
+  Sequence of Django apps whose associated models will be appended to
+  :ref:`CACHALOT_ONLY_CACHABLE_TABLES`. The rules between
+  :ref:`CACHALOT_UNCACHABLE_TABLES` and :ref:`CACHALOT_ONLY_CACHABLE_TABLES` still
+  apply as this setting only appends the given Django apps' tables on initial
+  Django setup.
 
 
 .. _CACHALOT_UNCACHABLE_TABLES:
@@ -143,6 +188,27 @@ Settings
   Always keep ``'django_migrations'`` in it, otherwise you may face
   some issues, especially during tests.
   Run ``./manage.py invalidate_cachalot`` after changing this setting.
+
+``CACHALOT_UNCACHABLE_APPS``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Default: ``frozenset()``
+:Description:
+  Sequence of Django apps whose associated models will be appended to
+  :ref:`CACHALOT_UNCACHABLE_TABLES`. The rules between
+  :ref:`CACHALOT_UNCACHABLE_TABLES` and :ref:`CACHALOT_ONLY_CACHABLE_TABLES` still
+  apply as this setting only appends the given Django apps' tables on initial
+  Django setup.
+
+``CACHALOT_ADDITIONAL_TABLES``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Default: ``list()``
+:Description:
+  Sequence of SQL table names that are not included in your Django
+  apps such as unmanaged models. Cachalot caches models that Django
+  does not manage, so if you want to ignore/not-cache those models,
+  then add them here.
 
 ``CACHALOT_QUERY_KEYGEN``
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -161,6 +227,39 @@ Settings
               the cache key of a SQL table.
               Clear your cache after changing this setting (it’s not enough
               to use ``./manage.py invalidate_cachalot``).
+
+``CACHALOT_FINAL_SQL_CHECK``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Default: ``False``
+:Description:
+    If set to ``True``, the final SQL check will be performed.
+    The `Final SQL check` checks for potentially overlooked tables when looking up involved tables
+    (eg. Ordering by referenced table). See tests for more details
+    (eg. ``test_order_by_field_of_another_table_with_check``).
+
+    Enabling this setting comes with a small performance cost::
+
+        CACHALOT_FINAL_SQL_CHECK=False:
+            mysql      is 1.4× slower then 9.9× faster
+            postgresql is 1.3× slower then 11.7× faster
+            sqlite     is 1.4× slower then 3.0× faster
+            filebased  is 1.4× slower then 9.5× faster
+            locmem     is 1.3× slower then 11.3× faster
+            pylibmc    is 1.4× slower then 8.5× faster
+            pymemcache is 1.4× slower then 7.3× faster
+            redis      is 1.4× slower then 6.8× faster
+
+        CACHALOT_FINAL_SQL_CHECK=True:
+            mysql      is 1.5× slower then 9.0× faster
+            postgresql is 1.3× slower then 10.5× faster
+            sqlite     is 1.4× slower then 2.6× faster
+            filebased  is 1.4× slower then 9.1× faster
+            locmem     is 1.3× slower then 9.9× faster
+            pylibmc    is 1.4× slower then 7.5× faster
+            pymemcache is 1.4× slower then 6.5× faster
+            redis      is 1.5× slower then 6.2× faster
+
 
 
 .. _Command:
@@ -191,7 +290,7 @@ Examples:
 Template utils
 ..............
 
-`Caching template fragments <https://docs.djangoproject.com/en/2.0/topics/cache/#template-fragment-caching>`_
+`Caching template fragments <https://docs.djangoproject.com/en/dev/topics/cache/#template-fragment-caching>`_
 can be extremely powerful to speedup a Django application.  However, it often
 means you have to adapt your models to get a relevant cache key, typically
 by adding a timestamp that refers to the last modification of the object.

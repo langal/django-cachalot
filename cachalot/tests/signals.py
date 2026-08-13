@@ -1,6 +1,3 @@
-# coding: utf-8
-
-from __future__ import unicode_literals
 from unittest import skipIf
 
 from django.conf import settings
@@ -15,6 +12,8 @@ from .models import Test
 
 
 class SignalsTestCase(TransactionTestCase):
+    databases = set(settings.DATABASES.keys())
+
     def test_table_invalidated(self):
         l = []
 

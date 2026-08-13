@@ -1,6 +1,4 @@
-from __future__ import unicode_literals
-
-from django import __version__ as django__version__, VERSION as django_version
+import copyreg
 from django.apps import AppConfig
 from django.conf import settings
 from django.core.checks import register, Tags, Warning, Error
@@ -9,18 +7,6 @@ from cachalot.utils import ITERABLES
 from .settings import (
     cachalot_settings, SUPPORTED_CACHE_BACKENDS, SUPPORTED_DATABASE_ENGINES,
     SUPPORTED_ONLY)
-
-
-@register(Tags.compatibility)
-def check_django_version(app_configs, **kwargs):
-    if not (1, 11) <= django_version < (2, 2):
-        return [Error(
-            'Django %s is not compatible with this version of django-cachalot.'
-            % django__version__,
-            hint='Refer to the django-cachalot documentation to find '
-                 'which versions are compatible.',
-            id='cachalot.E003')]
-    return []
 
 
 @register(Tags.caches, Tags.compatibility)
@@ -58,11 +44,18 @@ def check_databases_compatibility(app_configs, **kwargs):
         for db_alias in enabled_databases:
             if db_alias in databases:
                 engine = databases[db_alias]['ENGINE']
-                if engine not in SUPPORTED_DATABASE_ENGINES:
+                if (
+                    engine not in SUPPORTED_DATABASE_ENGINES
+                    and engine
+                    not in cachalot_settings.CACHALOT_ADDITIONAL_SUPPORTED_DATABASES
+                    and not cachalot_settings.CACHALOT_USE_UNSUPPORTED_DATABASE
+                ):
                     errors.append(Warning(
                         'Database engine %r is not supported '
                         'by django-cachalot.' % engine,
-                        hint='Switch to a supported database engine.',
+                            hint='Switch to a supported database engine, '
+                            'add an entry in `CACHALOT_ADDITIONAL_SUPPORTED_DATABASES`'
+                            ', or set True to `CACHALOT_USE_UNSUPPORTED_DATABASE`.',
                         id='cachalot.W003'
                     ))
             else:
@@ -95,4 +88,7 @@ class CachalotConfig(AppConfig):
     name = 'cachalot'
 
     def ready(self):
+        # Cast memoryview objects to bytes to be able to pickle them.
+        # https://docs.python.org/3/library/copyreg.html#copyreg.pickle
+        copyreg.pickle(memoryview, lambda val: (memoryview, (bytes(val),)))
         cachalot_settings.load()

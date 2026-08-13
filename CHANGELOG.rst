@@ -1,5 +1,171 @@
 What’s new in django-cachalot?
 ==============================
+2.9.1
+-----
+- Add support for Django 6.1
+
+2.9.0
+-----
+- Add support for Django 6.0 and Python 3.8-3.14 (#277)
+- Fix #280 CachalotPanel not working in Django Debug Toolbar (#277)
+- Fix Recursion Issue in AtomicCache (Issue #274)
+- Allow custom databases (#247)
+
+2.8.0
+-----
+- Add a setting for disabling iterator caching (#263)
+- Add support for testing against the builtin redis backend (#264)
+- Add Django 5.2 support to tox configuration (#272)
+
+2.7.0
+-----
+
+- Add support for caching queries with enum filters (#267)
+
+2.6.3
+-----
+
+- Support for Django 5.1
+
+2.6.2
+-----
+
+- Support for Python 3.12 and Django 5.0
+
+2.6.1
+-----
+
+- Hot fix when Django is externally imported due to connections import (#242)
+
+2.6.0
+-----
+
+- Dropped Django 2.2 and 4.0 support
+- Added Django 4.2 and Python 3.11 support
+- Added psycopg support (#229)
+- Updated tests to account for the `BEGIN` and `COMMIT` query changes in Django 4.2
+- Standardized django version comparisons in tests
+
+2.5.3
+-----
+
+- Verify get_meta isn't none before requesting db_table (#225 #226)
+
+2.5.2
+-----
+
+- Added Django 4.1 support (#217)
+
+2.5.1
+-----
+
+- Table invalidation condition enhanced (#213)
+- Add test settings to sdist (#203)
+- Include docs in sdist (#202)
+
+2.5.0
+-----
+
+- Add final SQL check to include potentially overlooked tables when looking up involved tables (#199)
+- Add ``CACHALOT_FINAL_SQL_CHECK`` for enabling Final SQL check
+
+2.4.5
+-----
+
+- Dropped Python 3.6 and Django 3.1 support. Added Django 4.0 support (#208)
+
+2.4.4
+-----
+
+- Handle queryset implementations without lhs/rhs attribute (#204)
+- Add Python 3.10 support (#206)
+- (Internal) Omit additional unnecessary code in coverage
+
+2.4.3
+-----
+
+- Fix annotated Now being cached (#195)
+- Fix conditional annotated expressions not being cached (#196)
+- Simplify annotation handling by using the flatten method (#197)
+- Fix Django 3.2 default_app_config deprecation (#198)
+- (Internal) Pinned psycopg2 to <2.9 due to Django 2.2 incompatibility
+
+2.4.2
+-----
+
+- Add convenience settings `CACHALOT_ONLY_CACHABLE_APPS`
+  and `CACHALOT_UNCACHABLE_APPS` (#187)
+- Drop support for Django 3.0 (#189)
+- (Internal) Added Django main-branch CI on cron job
+- (Internal) Removed duplicate code (#190)
+
+2.4.1
+-----
+
+- Fix Django requirement constraint to include 3.2.X not just 3.2
+- (Internal) Deleted obsolete travis-matrix.py file
+
+2.4.0
+-----
+
+- Add support for Django 3.2 (#181)
+- Remove enforced system check for Django version (#175)
+- Drop support for Django 2.0-2.1 and Python 3.5 (#181)
+- Add support for Pymemcache for Django 3.2+ (#181)
+- Reverts #157 with proper fix. (#181)
+- Add ``CACHALOT_ADDITIONAL_TABLES`` setting for unmanaged models (#183)
+
+2.3.5
+-----
+
+- Fix cachalot_disabled (#174)
+
+2.3.4
+-----
+
+- Fix bug with externally invalidated cache keys (#120)
+- Omit test files in coverage
+
+2.3.3
+-----
+
+- Remove deprecated signal argument (#165)
+- Add Python 3.9 support
+- Use Discord instead since Slack doesn't save messages,
+  @Andrew-Chen-Wang is not on there very much, and Discord
+  has a phenomenal search functionality (with ES).
+
+2.3.2
+-----
+
+- Cast memoryview objects to bytes to be able to pickle them (#163)
+
+2.3.1
+-----
+
+- Added support for Django 3.1, including the new, native JSONField
+
+2.3.0
+-----
+
+- Added context manager for temporarily disabling cachalot using `cachalot_disabled()`
+- Fix for certain Subquery cases.
+
+2.2.2
+-----
+
+- Drop support for Django 1.11 and Python 2.7
+- Added fix for subqueries from Django 2.2
+
+2.2.0
+-----
+
+- Adds Django 2.2 and 3.0 support.
+- Dropped official support for Python 3.4
+
+  - It won't run properly with Travis CI tests on MySQL.
+
+- All Travis CI tests are fully functional.
 
 2.1.0
 -----
@@ -234,6 +400,7 @@ Fixed:
         pk__in=User.objects.filter(
             pk__in=User.objects.filter(
                 user_permissions__in=Permission.objects.all())))
+
 - Avoids setting useless cache keys by using table names instead of
   Django-generated table alias
 

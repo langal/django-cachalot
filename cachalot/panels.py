@@ -1,13 +1,10 @@
-# coding: utf-8
-
-from __future__ import unicode_literals
 from collections import defaultdict
 from datetime import datetime
 
 from debug_toolbar.panels import Panel
 from django.apps import apps
 from django.conf import settings
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 from django.utils.timesince import timesince
 
 from .cache import cachalot_caches
@@ -39,8 +36,9 @@ class CachalotPanel(Panel):
         settings.CACHALOT_ENABLED = False
         cachalot_settings.reload()
 
-    def process_response(self, request, response):
+    def process_request(self, request):
         self.collect_invalidations()
+        return super(CachalotPanel, self).process_request(request)
 
     def collect_invalidations(self):
         models = apps.get_models()
@@ -56,12 +54,12 @@ class CachalotPanel(Panel):
                 invalidation = datetime.fromtimestamp(timestamp)
                 model = model_cache_keys[cache_key]
                 data[db_alias].append(
-                    (model._meta.app_label, model.__name__, invalidation))
+                    (model._meta.app_label, model.__name__, timesince(invalidation)))
                 if self.last_invalidation is None \
                         or invalidation > self.last_invalidation:
                     self.last_invalidation = invalidation
             data[db_alias].sort(key=lambda row: row[2], reverse=True)
-        self.record_stats({'invalidations_per_db': data.items()})
+        self.record_stats({'invalidations_per_db': list(data.items())})
 
     @property
     def nav_subtitle(self):

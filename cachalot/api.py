@@ -1,11 +1,9 @@
-# coding: utf-8
-
-from __future__ import unicode_literals
+from contextlib import contextmanager
+from typing import Any, Optional, Tuple, Union
 
 from django.apps import apps
 from django.conf import settings
 from django.db import connections
-from django.utils.six import string_types
 
 from .cache import cachalot_caches
 from .settings import cachalot_settings
@@ -14,7 +12,15 @@ from .transaction import AtomicCache
 from .utils import _invalidate_tables
 
 
-__all__ = ('invalidate', 'get_last_invalidation')
+try:
+    from asgiref.local import Local
+    LOCAL_STORAGE = Local()
+except ImportError:
+    import threading
+    LOCAL_STORAGE = threading.local()
+
+
+__all__ = ('invalidate', 'get_last_invalidation', 'cachalot_disabled')
 
 
 def _cache_db_tables_iterator(tables, cache_alias, db_alias):
@@ -31,16 +37,20 @@ def _cache_db_tables_iterator(tables, cache_alias, db_alias):
 
 def _get_tables(tables_or_models):
     for table_or_model in tables_or_models:
-        if isinstance(table_or_model, string_types) and '.' in table_or_model:
+        if isinstance(table_or_model, str) and '.' in table_or_model:
             try:
                 table_or_model = apps.get_model(table_or_model)
             except LookupError:
                 pass
-        yield (table_or_model if isinstance(table_or_model, string_types)
+        yield (table_or_model if isinstance(table_or_model, str)
                else table_or_model._meta.db_table)
 
 
-def invalidate(*tables_or_models, **kwargs):
+def invalidate(
+    *tables_or_models: Tuple[Union[str, Any], ...],
+    cache_alias: Optional[str] = None,
+    db_alias: Optional[str] = None,
+) -> None:
     """
     Clears what was cached by django-cachalot implying one or more SQL tables
     or models from ``tables_or_models``.
@@ -57,19 +67,9 @@ def invalidate(*tables_or_models, **kwargs):
                            (or a combination)
     :type tables_or_models: tuple of strings or models
     :arg cache_alias: Alias from the Django ``CACHES`` setting
-    :type cache_alias: string or NoneType
     :arg db_alias: Alias from the Django ``DATABASES`` setting
-    :type db_alias: string or NoneType
     :returns: Nothing
-    :rtype: NoneType
     """
-    # TODO: Replace with positional arguments when we drop Python 2 support.
-    cache_alias = kwargs.pop('cache_alias', None)
-    db_alias = kwargs.pop('db_alias', None)
-    for k in kwargs:
-        raise TypeError(
-            "invalidate() got an unexpected keyword argument '%s'" % k)
-
     send_signal = False
     invalidated = set()
     for cache_alias, db_alias, tables in _cache_db_tables_iterator(
@@ -85,7 +85,11 @@ def invalidate(*tables_or_models, **kwargs):
             post_invalidation.send(table, db_alias=db_alias)
 
 
-def get_last_invalidation(*tables_or_models, **kwargs):
+def get_last_invalidation(
+    *tables_or_models: Tuple[Union[str, Any], ...],
+    cache_alias: Optional[str] = None,
+    db_alias: Optional[str] = None,
+) -> float:
     """
     Returns the timestamp of the most recent invalidation of the given
     ``tables_or_models``.  If ``tables_or_models`` is not specified,
@@ -101,19 +105,9 @@ def get_last_invalidation(*tables_or_models, **kwargs):
                            (or a combination)
     :type tables_or_models: tuple of strings or models
     :arg cache_alias: Alias from the Django ``CACHES`` setting
-    :type cache_alias: string or NoneType
     :arg db_alias: Alias from the Django ``DATABASES`` setting
-    :type db_alias: string or NoneType
     :returns: The timestamp of the most recent invalidation
-    :rtype: float
     """
-    # TODO: Replace with positional arguments when we drop Python 2 support.
-    cache_alias = kwargs.pop('cache_alias', None)
-    db_alias = kwargs.pop('db_alias', None)
-    for k in kwargs:
-        raise TypeError("get_last_invalidation() got an unexpected "
-                        "keyword argument '%s'" % k)
-
     last_invalidation = 0.0
     for cache_alias, db_alias, tables in _cache_db_tables_iterator(
             list(_get_tables(tables_or_models)), cache_alias, db_alias):
@@ -126,3 +120,36 @@ def get_last_invalidation(*tables_or_models, **kwargs):
             if current_last_invalidation > last_invalidation:
                 last_invalidation = current_last_invalidation
     return last_invalidation
+
+
+@contextmanager
+def cachalot_disabled(all_queries: bool = False):
+    """
+    Context manager for temporarily disabling cachalot.
+    If you evaluate the same queryset a second time,
+    like normally for Django querysets, this will access
+    the variable that saved it in-memory. For example:
+
+    .. code-block:: python
+
+        with cachalot_disabled():
+            qs = Test.objects.filter(blah=blah)
+            # Does a single query to the db
+            list(qs)  # Evaluates queryset
+            # Because the qs was evaluated, it's
+            # saved in memory:
+            list(qs)  # this does 0 queries.
+            # This does 1 query to the db
+            list(Test.objects.filter(blah=blah))
+
+    If you evaluate the queryset outside the context manager, any duplicate
+    query will use the cached result unless an object creation happens in between
+    the original and duplicate query.
+
+    :arg all_queries: Any query, including already evaluated queries, are re-evaluated.
+    """
+    was_enabled = getattr(LOCAL_STORAGE, "cachalot_enabled", cachalot_settings.CACHALOT_ENABLED)
+    LOCAL_STORAGE.cachalot_enabled = False
+    LOCAL_STORAGE.disable_on_all = all_queries
+    yield
+    LOCAL_STORAGE.cachalot_enabled = was_enabled

@@ -1,7 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
-
-from __future__ import unicode_literals
 import os
 import sys
 import django
@@ -11,7 +8,7 @@ if __name__ == '__main__':
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
     django.setup()
     from django.test.runner import DiscoverRunner
-    test_runner = DiscoverRunner(verbosity=2)
-    failures = test_runner.run_tests(['cachalot.tests'])
+    test_runner = DiscoverRunner(verbosity=2, interactive=False)
+    failures = test_runner.run_tests(['cachalot.tests', 'cachalot.admin_tests'])
     if failures:
         sys.exit(failures)
